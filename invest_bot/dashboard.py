@@ -1,6 +1,7 @@
 """Loopback-only dashboard. No trading endpoint is exposed."""
 import argparse
 import json
+import logging
 import os
 import secrets
 import sys
@@ -10,6 +11,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from logging.handlers import RotatingFileHandler
 from urllib.parse import urlsplit
 
 from .config import Settings, load_env, save_connection_settings
@@ -22,6 +24,22 @@ TOKEN = secrets.token_urlsafe(32)
 SNAPSHOT = None
 CLIENT = None
 CLIENT_STARTED = None
+LOGGER = logging.getLogger('invest_bot.dashboard')
+LOGGER.addHandler(logging.NullHandler())
+
+
+def configure_logging(log_root: Path = ROOT) -> Path:
+    """Write operational events locally without recording credentials or payloads."""
+    log_dir = log_root / 'data' / 'logs'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / 'dashboard.log'
+    if not any(getattr(handler, 'baseFilename', None) == str(log_path) for handler in LOGGER.handlers):
+        handler = RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=3, encoding='utf-8')
+        handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+        LOGGER.addHandler(handler)
+    LOGGER.setLevel(logging.INFO)
+    LOGGER.propagate = False
+    return log_path
 
 
 def current_budget():
@@ -87,12 +105,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(payload)
+        LOGGER.info('response status=%s method=%s path=%s', status, self.command, urlsplit(self.path).path)
 
     def valid_host(self):
         return self.headers.get('Host') in {f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}'}
 
     def do_GET(self):
         if not self.valid_host():
+            LOGGER.warning('request rejected reason=invalid_host method=%s', self.command)
             return self.respond(403, {'error': 'Invalid host'})
         path = urlsplit(self.path).path
         if path == '/api/state':
@@ -109,6 +129,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         global SNAPSHOT, CLIENT, CLIENT_STARTED
         if not self.valid_host() or self.headers.get('X-Dashboard-Token') != TOKEN:
+            LOGGER.warning('request rejected reason=invalid_session method=%s path=%s', self.command, urlsplit(self.path).path)
             return self.respond(403, {'error': '화면을 새로고침한 뒤 다시 시도하세요.'})
         path = urlsplit(self.path).path
         if path == '/api/settings':
@@ -117,7 +138,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not 0 < size <= 1024:
                     raise ValueError('잘못된 요청입니다.')
                 data = json.loads(self.rfile.read(size))
-                return self.respond(200, {'budget': save_budget(data['monthly_budget_krw'])})
+                saved = save_budget(data['monthly_budget_krw'])
+                LOGGER.info('monthly budget saved')
+                return self.respond(200, {'budget': saved})
             except (ValueError, KeyError, TypeError):
                 return self.respond(400, {'error': '투자금은 1,000~100,000,000원 사이 정수로 입력하세요.'})
             except OSError:
@@ -133,6 +156,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 # Discard a previous client so the next check uses the saved account.
                 CLIENT, CLIENT_STARTED, SNAPSHOT = None, None, None
+                LOGGER.info('broker connection settings saved')
                 return self.respond(200, {'connection': connection_state()})
             except (ValueError, KeyError, TypeError):
                 return self.respond(400, {'error': 'Client ID와 Client Secret을 입력해 주세요.'})
@@ -144,7 +168,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not 0 < size <= 128:
                     raise ValueError('잘못된 요청입니다.')
                 data = json.loads(self.rfile.read(size))
-                return self.respond(200, {'auto_trading_enabled': save_auto_trading(data['enabled'])})
+                enabled = save_auto_trading(data['enabled'])
+                LOGGER.info('automatic trading setting changed enabled=%s', enabled)
+                return self.respond(200, {'auto_trading_enabled': enabled})
             except (ValueError, KeyError, TypeError):
                 return self.respond(400, {'error': '자동거래 설정값이 올바르지 않습니다.'})
             except OSError:
@@ -156,14 +182,16 @@ class Handler(BaseHTTPRequestHandler):
                     SNAPSHOT['updated_at'], sum(item['value_krw'] for item in SNAPSHOT['items'])
                 )
                 return self.respond(200, {'snapshot': SNAPSHOT, 'connection': connection_state(), 'history': history})
-            except Exception:
+            except Exception as error:
                 # Never send tokens, account IDs or raw broker error bodies to the browser.
+                LOGGER.error('portfolio refresh failed error_type=%s', type(error).__name__)
                 return self.respond(502, {'error': '잔고 조회에 실패했습니다. .env의 토스 API 키·계좌 설정, 허용 IP와 네트워크를 확인하세요. 마지막 조회값은 유지됩니다.'})
         return self.respond(404, {'error': 'Not found'})
 
 
 def serve(port: int = 8765, open_browser: bool = False):
     """Run the loopback dashboard and optionally open it in the default browser."""
+    log_path = configure_logging()
     try:
         server = HTTPServer(('127.0.0.1', port), Handler)
     except OSError:
@@ -171,6 +199,7 @@ def serve(port: int = 8765, open_browser: bool = False):
             raise
         server = HTTPServer(('127.0.0.1', 0), Handler)
     url = f'http://127.0.0.1:{server.server_port}'
+    LOGGER.info('dashboard started url=%s log=%s', url, log_path)
     print(f'투자 대시보드: {url} (종료: Ctrl+C)', flush=True)
     if open_browser:
         threading.Timer(0.25, lambda: webbrowser.open(url, new=2)).start()
@@ -180,6 +209,7 @@ def serve(port: int = 8765, open_browser: bool = False):
         pass
     finally:
         server.server_close()
+        LOGGER.info('dashboard stopped')
 
 
 def main(argv=None):
