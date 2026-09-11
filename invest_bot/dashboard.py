@@ -13,7 +13,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .config import Settings, load_env, save_connection_settings
-from .preferences import ROOT, auto_trading_enabled, budget, save_auto_trading, save_budget
+from .preferences import (ROOT, auto_trading_enabled, budget, portfolio_history,
+                          save_auto_trading, save_budget, save_portfolio_value)
 
 RESOURCE_ROOT = Path(getattr(sys, '_MEIPASS', ROOT))
 STATIC = RESOURCE_ROOT / 'invest_bot' / 'static'
@@ -60,8 +61,15 @@ def fetch_snapshot():
         conversion = fx if currency == 'USD' else Decimal(1)
         value = Decimal(item['marketValue']['amount']) * conversion
         cost = Decimal(item['marketValue']['purchaseAmount']) * conversion
+        quantity = Decimal(str(item['quantity']))
+        if quantity <= 0:
+            continue
+        value_usd = value / fx
+        cost_usd = cost / fx
         items.append({'symbol': item['symbol'], 'name': item['name'], 'quantity': item['quantity'],
-                      'value_krw': float(value), 'cost_krw': float(cost), 'currency': currency})
+                      'value_krw': float(value), 'cost_krw': float(cost), 'currency': currency,
+                      'current_price_usd': float(value_usd / quantity),
+                      'average_price_usd': float(cost_usd / quantity)})
     return {'source': 'live', 'updated_at': now.isoformat(), 'fx': float(fx), 'items': items}
 
 
@@ -89,7 +97,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/state':
             try:
-                return self.respond(200, {'budget': current_budget(), 'token': TOKEN, 'snapshot': SNAPSHOT, 'connection': connection_state(), 'auto_trading_enabled': auto_trading_enabled()})
+                return self.respond(200, {'budget': current_budget(), 'token': TOKEN, 'snapshot': SNAPSHOT, 'connection': connection_state(), 'auto_trading_enabled': auto_trading_enabled(), 'history': portfolio_history()})
             except (ValueError, KeyError, OSError):
                 return self.respond(500, {'error': '투자금 설정 파일을 확인하세요: data/settings.json'})
         assets = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'application/javascript'), '/style.css': ('style.css', 'text/css')}
@@ -144,7 +152,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/refresh':
             try:
                 SNAPSHOT = fetch_snapshot()
-                return self.respond(200, {'snapshot': SNAPSHOT, 'connection': connection_state()})
+                history = save_portfolio_value(
+                    SNAPSHOT['updated_at'], sum(item['value_krw'] for item in SNAPSHOT['items'])
+                )
+                return self.respond(200, {'snapshot': SNAPSHOT, 'connection': connection_state(), 'history': history})
             except Exception:
                 # Never send tokens, account IDs or raw broker error bodies to the browser.
                 return self.respond(502, {'error': '잔고 조회에 실패했습니다. .env의 토스 API 키·계좌 설정, 허용 IP와 네트워크를 확인하세요. 마지막 조회값은 유지됩니다.'})

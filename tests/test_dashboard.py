@@ -16,8 +16,10 @@ class DashboardTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.path_patch = patch.object(preferences, 'SETTINGS_PATH', Path(self.temp.name) / 'settings.json')
+        self.history_patch = patch.object(preferences, 'PORTFOLIO_HISTORY_PATH', Path(self.temp.name) / 'portfolio-history.json')
         self.env_patch = patch.object(config, 'ROOT', Path(self.temp.name))
         self.path_patch.start()
+        self.history_patch.start()
         self.env_patch.start()
         self.server = HTTPServer(('127.0.0.1', 0), dashboard.Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -29,6 +31,7 @@ class DashboardTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
         self.path_patch.stop()
+        self.history_patch.stop()
         self.env_patch.stop()
         self.temp.cleanup()
 
@@ -109,6 +112,18 @@ class DashboardTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(HTTPError) as error:
                 self.post('/api/auto-trading', {'enabled': value})
             self.assertEqual(error.exception.code, 400)
+
+    def test_refresh_saves_one_daily_portfolio_value_for_trend_chart(self):
+        snapshot = {
+            'source': 'live', 'updated_at': '2026-09-11T10:00:00+00:00', 'items': [
+                {'symbol': 'QQQ', 'value_krw': 1200000, 'cost_krw': 1000000},
+            ],
+        }
+        with patch.object(dashboard, 'fetch_snapshot', return_value=snapshot):
+            response = self.post('/api/refresh', {})
+        self.assertEqual(response['history'], [{'recorded_at': snapshot['updated_at'], 'value_krw': 1200000}])
+        state = json.load(urlopen(self.url + '/api/state'))
+        self.assertEqual(state['history'], response['history'])
 
 
 if __name__ == '__main__':
