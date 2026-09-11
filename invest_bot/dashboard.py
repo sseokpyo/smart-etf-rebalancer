@@ -3,15 +3,20 @@ import argparse
 import json
 import os
 import secrets
+import sys
+import threading
+import webbrowser
 from datetime import datetime, timezone
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from .config import Settings, load_env
 from .preferences import ROOT, budget, save_budget
 
-STATIC = ROOT / 'invest_bot' / 'static'
+RESOURCE_ROOT = Path(getattr(sys, '_MEIPASS', ROOT))
+STATIC = RESOURCE_ROOT / 'invest_bot' / 'static'
 TOKEN = secrets.token_urlsafe(32)
 SNAPSHOT = None
 CLIENT = None
@@ -119,18 +124,32 @@ class Handler(BaseHTTPRequestHandler):
         return self.respond(404, {'error': 'Not found'})
 
 
-def main():
-    parser = argparse.ArgumentParser(description='로컬 투자 대시보드')
-    parser.add_argument('--port', type=int, default=8765)
-    args = parser.parse_args()
-    server = HTTPServer(('127.0.0.1', args.port), Handler)
-    print(f'투자 대시보드: http://127.0.0.1:{server.server_port} (종료: Ctrl+C)', flush=True)
+def serve(port: int = 8765, open_browser: bool = False):
+    """Run the loopback dashboard and optionally open it in the default browser."""
+    try:
+        server = HTTPServer(('127.0.0.1', port), Handler)
+    except OSError:
+        if port == 0:
+            raise
+        server = HTTPServer(('127.0.0.1', 0), Handler)
+    url = f'http://127.0.0.1:{server.server_port}'
+    print(f'투자 대시보드: {url} (종료: Ctrl+C)', flush=True)
+    if open_browser:
+        threading.Timer(0.25, lambda: webbrowser.open(url, new=2)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='로컬 투자 대시보드')
+    parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--open-browser', action='store_true', help='기본 브라우저에서 대시보드를 엽니다.')
+    args = parser.parse_args(argv)
+    serve(args.port, args.open_browser)
 
 
 if __name__ == '__main__':

@@ -1,11 +1,14 @@
 """Shared persistent settings for the dashboard and command-line planner."""
 import json
 import os
+import sys
 import tempfile
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+# In a bundled Windows app, resources live in PyInstaller's temporary folder,
+# while user settings must remain next to the executable between launches.
+ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
 SETTINGS_PATH = ROOT / 'data' / 'settings.json'
 
 
