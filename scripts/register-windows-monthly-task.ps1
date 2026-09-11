@@ -3,7 +3,7 @@ param(
     [int]$Day = 1,
     [ValidatePattern('^([01]\d|2[0-3]):[0-5]\d$')]
     [string]$Time = '10:30',
-    [string]$TaskName = 'Smart ETF Rebalancer - Monthly Dry Run'
+    [string]$TaskName = 'Smart ETF Rebalancer - Monthly Investment'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,4 +26,4 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "등록 완료: $TaskName"
 Write-Host "실행 시각: 매월 $Day 일 $Time"
-Write-Host '이 작업은 DRY_RUN 계획만 만듭니다. 주문을 전송하지 않습니다.'
+Write-Host '대시보드의 자동거래가 OFF이면 계획만 만들고, ON이면 계획된 매수 주문을 전송합니다.'

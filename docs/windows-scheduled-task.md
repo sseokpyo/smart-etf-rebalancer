@@ -13,9 +13,9 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-`.env`에 토스 Open API 값을 입력하되, 처음에는 반드시 `DRY_RUN=true`를 유지합니다. 토스증권 WTS의 Open API 허용 IP에는 이 PC가 인터넷에 연결될 때 사용하는 공인 IP를 등록합니다.
+대시보드의 **설정** 화면에서 토스 Open API 값을 저장합니다. 토스증권 WTS의 Open API 허용 IP에는 이 PC가 인터넷에 연결될 때 사용하는 공인 IP를 등록합니다.
 
-## 월간 DRY_RUN 등록
+## 월간 실행 등록
 
 프로젝트 루트에서 다음 명령을 실행합니다.
 
@@ -29,7 +29,7 @@ Copy-Item .env.example .env
 .\scripts\register-windows-monthly-task.ps1 -Day 5 -Time '21:30'
 ```
 
-등록된 작업은 `Smart ETF Rebalancer - Monthly Dry Run`이며 `scripts/run-monthly-dry-run.cmd`를 실행합니다. 이 실행 파일은 `--live`를 전달하지 않으므로 주문을 보내지 않습니다.
+등록된 작업은 `Smart ETF Rebalancer - Monthly Investment`이며 `scripts/run-monthly-dry-run.cmd`를 실행합니다. 대시보드의 **자동거래**가 OFF이면 계획만 만들고 주문을 보내지 않습니다.
 
 ## 첫 실행 확인
 
@@ -44,9 +44,11 @@ Windows 검색에서 **작업 스케줄러**를 열고 `작업 스케줄러 라�
 다음 명령으로 자동 실행을 제거합니다.
 
 ```powershell
-schtasks /Delete /TN "Smart ETF Rebalancer - Monthly Dry Run" /F
+schtasks /Delete /TN "Smart ETF Rebalancer - Monthly Investment" /F
 ```
 
-## 실주문
+## 자동거래
 
-PC 자동 실행은 충분한 DRY_RUN 검증 전까지 주문 용도로 사용하지 않습니다. 실주문 전환은 토스 앱의 주문 내역과 월간 실행 계획을 여러 번 대조한 뒤 별도 절차로 진행합니다.
+대시보드의 **설정 → 자동거래 켜기**를 누르면 다음 월간 실행부터 계획된 매수 주문을 전송합니다. OFF로 바꾸면 다음 월간 실행부터 다시 계획만 만듭니다. 토글을 누르는 즉시 주문이 실행되지는 않습니다.
+
+자동거래를 켜기 전에는 작업 스케줄러에서 수동 실행한 뒤 `data/runs/`의 계획 파일과 토스 앱의 잔고를 여러 번 대조하세요. 월별 주문 기록이 `data/ledger/`에 남아 같은 달 중복 실행은 차단됩니다.

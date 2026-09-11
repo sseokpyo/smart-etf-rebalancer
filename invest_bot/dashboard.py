@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .config import Settings, load_env, save_connection_settings
-from .preferences import ROOT, budget, save_budget
+from .preferences import ROOT, auto_trading_enabled, budget, save_auto_trading, save_budget
 
 RESOURCE_ROOT = Path(getattr(sys, '_MEIPASS', ROOT))
 STATIC = RESOURCE_ROOT / 'invest_bot' / 'static'
@@ -89,7 +89,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/state':
             try:
-                return self.respond(200, {'budget': current_budget(), 'token': TOKEN, 'snapshot': SNAPSHOT, 'connection': connection_state()})
+                return self.respond(200, {'budget': current_budget(), 'token': TOKEN, 'snapshot': SNAPSHOT, 'connection': connection_state(), 'auto_trading_enabled': auto_trading_enabled()})
             except (ValueError, KeyError, OSError):
                 return self.respond(500, {'error': '투자금 설정 파일을 확인하세요: data/settings.json'})
         assets = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'application/javascript'), '/style.css': ('style.css', 'text/css')}
@@ -130,6 +130,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(400, {'error': 'Client ID와 Client Secret을 입력해 주세요.'})
             except OSError:
                 return self.respond(500, {'error': '연결 설정 저장에 실패했습니다. 폴더 쓰기 권한을 확인하세요.'})
+        if path == '/api/auto-trading':
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+                if not 0 < size <= 128:
+                    raise ValueError('잘못된 요청입니다.')
+                data = json.loads(self.rfile.read(size))
+                return self.respond(200, {'auto_trading_enabled': save_auto_trading(data['enabled'])})
+            except (ValueError, KeyError, TypeError):
+                return self.respond(400, {'error': '자동거래 설정값이 올바르지 않습니다.'})
+            except OSError:
+                return self.respond(500, {'error': '자동거래 설정 저장에 실패했습니다. 폴더 쓰기 권한을 확인하세요.'})
         if path == '/api/refresh':
             try:
                 SNAPSHOT = fetch_snapshot()

@@ -12,6 +12,27 @@ ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) el
 SETTINGS_PATH = ROOT / 'data' / 'settings.json'
 
 
+def _read_settings():
+    if not SETTINGS_PATH.exists():
+        return {}
+    value = json.loads(SETTINGS_PATH.read_text(encoding='utf-8'))
+    if not isinstance(value, dict):
+        raise ValueError('설정 파일 형식이 올바르지 않습니다.')
+    return value
+
+
+def _write_settings(value):
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            json.dump(value, stream, ensure_ascii=False)
+        os.replace(name, SETTINGS_PATH)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
 def validate_budget(value):
     if isinstance(value, bool):
         raise ValueError('월 투자금은 정수 원 단위로 입력하세요.')
@@ -25,20 +46,28 @@ def validate_budget(value):
 
 
 def budget(default='100000'):
-    if SETTINGS_PATH.exists():
-        return validate_budget(json.loads(SETTINGS_PATH.read_text(encoding='utf-8'))['monthly_budget_krw'])
+    settings = _read_settings()
+    if 'monthly_budget_krw' in settings:
+        return validate_budget(settings['monthly_budget_krw'])
     return validate_budget(default)
 
 
 def save_budget(value):
     amount = validate_budget(value)
-    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix='.tmp')
-    try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            json.dump({'monthly_budget_krw': amount}, stream)
-        os.replace(name, SETTINGS_PATH)
-    finally:
-        if os.path.exists(name):
-            os.unlink(name)
+    settings = _read_settings()
+    settings['monthly_budget_krw'] = amount
+    _write_settings(settings)
     return amount
+
+
+def auto_trading_enabled():
+    return _read_settings().get('auto_trading_enabled', False) is True
+
+
+def save_auto_trading(enabled):
+    if not isinstance(enabled, bool):
+        raise ValueError('자동거래 설정값이 올바르지 않습니다.')
+    settings = _read_settings()
+    settings['auto_trading_enabled'] = enabled
+    _write_settings(settings)
+    return enabled

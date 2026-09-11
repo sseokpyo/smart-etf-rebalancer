@@ -96,6 +96,20 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 400)
         self.assertFalse((Path(self.temp.name) / '.env').exists())
 
+    def test_auto_trading_toggle_is_off_by_default_and_persists(self):
+        self.assertFalse(preferences.auto_trading_enabled())
+        response = self.post('/api/auto-trading', {'enabled': True})
+        state = json.load(urlopen(self.url + '/api/state'))
+        self.assertTrue(response['auto_trading_enabled'])
+        self.assertTrue(state['auto_trading_enabled'])
+        self.assertTrue(preferences.auto_trading_enabled())
+
+    def test_auto_trading_requires_a_boolean(self):
+        for value in ['true', 1, None]:
+            with self.subTest(value=value), self.assertRaises(HTTPError) as error:
+                self.post('/api/auto-trading', {'enabled': value})
+            self.assertEqual(error.exception.code, 400)
+
 
 if __name__ == '__main__':
     unittest.main()
