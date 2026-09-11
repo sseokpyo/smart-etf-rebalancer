@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from .config import Settings, load_env, save_connection_settings
 from .preferences import (ROOT, auto_trading_enabled, budget, portfolio_history,
                           save_auto_trading, save_budget, save_portfolio_value)
+from .toss import TossClient
 
 RESOURCE_ROOT = Path(getattr(sys, '_MEIPASS', ROOT))
 STATIC = RESOURCE_ROOT / 'invest_bot' / 'static'
@@ -57,7 +58,6 @@ def connection_state():
 
 def fetch_snapshot():
     global CLIENT, CLIENT_STARTED
-    from .toss import TossClient
     settings = Settings.from_env()
     now = datetime.now(timezone.utc)
     if CLIENT is None or (now - CLIENT_STARTED).total_seconds() > 3600:
