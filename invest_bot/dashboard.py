@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .config import Settings, load_env
+from .config import Settings, load_env, save_connection_settings
 from .preferences import ROOT, budget, save_budget
 
 RESOURCE_ROOT = Path(getattr(sys, '_MEIPASS', ROOT))
@@ -99,7 +99,7 @@ class Handler(BaseHTTPRequestHandler):
         self.respond(200, (STATIC / filename).read_bytes(), mime + '; charset=utf-8')
 
     def do_POST(self):
-        global SNAPSHOT
+        global SNAPSHOT, CLIENT, CLIENT_STARTED
         if not self.valid_host() or self.headers.get('X-Dashboard-Token') != TOKEN:
             return self.respond(403, {'error': '화면을 새로고침한 뒤 다시 시도하세요.'})
         path = urlsplit(self.path).path
@@ -114,6 +114,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(400, {'error': '투자금은 1,000~100,000,000원 사이 정수로 입력하세요.'})
             except OSError:
                 return self.respond(500, {'error': '설정 저장에 실패했습니다. 폴더 쓰기 권한을 확인하세요.'})
+        if path == '/api/connection':
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+                if not 0 < size <= 4096:
+                    raise ValueError('잘못된 요청입니다.')
+                data = json.loads(self.rfile.read(size))
+                save_connection_settings(
+                    data['client_id'], data['client_secret'], data.get('account_seq', '')
+                )
+                # Discard a previous client so the next check uses the saved account.
+                CLIENT, CLIENT_STARTED, SNAPSHOT = None, None, None
+                return self.respond(200, {'connection': connection_state()})
+            except (ValueError, KeyError, TypeError):
+                return self.respond(400, {'error': 'Client ID와 Client Secret을 입력해 주세요.'})
+            except OSError:
+                return self.respond(500, {'error': '연결 설정 저장에 실패했습니다. 폴더 쓰기 권한을 확인하세요.'})
         if path == '/api/refresh':
             try:
                 SNAPSHOT = fetch_snapshot()

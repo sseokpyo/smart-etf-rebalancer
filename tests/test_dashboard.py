@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from http.server import HTTPServer
 
-from invest_bot import dashboard, preferences
+from invest_bot import config, dashboard, preferences
 from invest_bot.config import Settings
 
 
@@ -16,7 +16,9 @@ class DashboardTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.path_patch = patch.object(preferences, 'SETTINGS_PATH', Path(self.temp.name) / 'settings.json')
+        self.env_patch = patch.object(config, 'ROOT', Path(self.temp.name))
         self.path_patch.start()
+        self.env_patch.start()
         self.server = HTTPServer(('127.0.0.1', 0), dashboard.Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -27,6 +29,7 @@ class DashboardTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
         self.path_patch.stop()
+        self.env_patch.stop()
         self.temp.cleanup()
 
     def post(self, path, data, token=dashboard.TOKEN):
@@ -71,6 +74,27 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(dashboard.connection_state(), 'not_configured')
         with patch.dict('os.environ', {'TOSS_CLIENT_ID': 'private-client', 'TOSS_CLIENT_SECRET': 'private-secret'}, clear=True):
             self.assertEqual(dashboard.connection_state(), 'ready')
+
+    def test_connection_settings_save_locally_without_exposing_credentials(self):
+        with patch.dict('os.environ', {}, clear=True):
+            response = self.post('/api/connection', {
+                'client_id': 'private-client',
+                'client_secret': 'private-secret',
+                'account_seq': '12345678',
+            })
+            state = json.load(urlopen(self.url + '/api/state'))
+        stored = (Path(self.temp.name) / '.env').read_text(encoding='utf-8')
+        self.assertEqual(response['connection'], 'ready')
+        self.assertIn('TOSS_CLIENT_SECRET=private-secret', stored)
+        self.assertNotIn('private-client', json.dumps(response))
+        self.assertNotIn('private-secret', json.dumps(state))
+        self.assertNotIn('12345678', json.dumps(state))
+
+    def test_connection_requires_client_id_and_secret(self):
+        with self.assertRaises(HTTPError) as error:
+            self.post('/api/connection', {'client_id': 'only-id', 'client_secret': ''})
+        self.assertEqual(error.exception.code, 400)
+        self.assertFalse((Path(self.temp.name) / '.env').exists())
 
 
 if __name__ == '__main__':

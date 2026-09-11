@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from .preferences import ROOT, budget
 
 
-def load_env(path: Path = ROOT / ".env") -> None:
+def load_env(path: Path | None = None) -> None:
+    path = path or ROOT / ".env"
     """Load a small .env file without adding a dependency."""
     if not path.exists():
         return
@@ -17,6 +19,42 @@ def load_env(path: Path = ROOT / ".env") -> None:
             continue
         key, value = line.split("=", 1)
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+def save_connection_settings(client_id: str, client_secret: str, account_seq: str = "") -> None:
+    """Store Toss API settings locally without ever returning their values to callers."""
+    values = {
+        "TOSS_CLIENT_ID": client_id.strip(),
+        "TOSS_CLIENT_SECRET": client_secret.strip(),
+        "TOSS_ACCOUNT_SEQ": account_seq.strip(),
+    }
+    if not values["TOSS_CLIENT_ID"] or not values["TOSS_CLIENT_SECRET"]:
+        raise ValueError("Client ID와 Client Secret을 입력해 주세요.")
+    if any("\r" in value or "\n" in value for value in values.values()):
+        raise ValueError("입력값에 줄바꿈을 사용할 수 없습니다.")
+
+    env_path = ROOT / ".env"
+    existing = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    remaining = []
+    managed_keys = set(values)
+    for line in existing:
+        key = line.split("=", 1)[0].strip() if "=" in line else ""
+        if key not in managed_keys:
+            remaining.append(line)
+
+    content = "\n".join(
+        [*remaining, *(f"{key}={value}" for key, value in values.items())]
+    ).rstrip() + "\n"
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=ROOT, prefix=".env.", delete=False
+    ) as temporary:
+        temporary.write(content)
+        temporary_path = Path(temporary.name)
+    os.replace(temporary_path, env_path)
+
+    # load_env intentionally preserves existing process values. Update this running
+    # dashboard explicitly so a connection check can use newly saved settings.
+    os.environ.update(values)
 
 
 def required(name: str) -> str:
