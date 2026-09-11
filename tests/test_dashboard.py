@@ -8,6 +8,8 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from http.server import HTTPServer
 
+from requests.exceptions import ConnectionError as RequestsConnectionError
+
 from invest_bot import config, dashboard, preferences
 from invest_bot.config import Settings
 
@@ -63,6 +65,14 @@ class DashboardTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as error:
                 self.post('/api/refresh', {})
             self.assertNotIn('secret-value', error.exception.read().decode())
+
+    def test_refresh_reports_network_connection_failure(self):
+        with patch.object(dashboard, 'fetch_snapshot', side_effect=RequestsConnectionError('private detail')):
+            with self.assertRaises(HTTPError) as error:
+                self.post('/api/refresh', {})
+            body = error.exception.read().decode()
+        self.assertIn('openapi.tossinvest.com', body)
+        self.assertNotIn('private detail', body)
 
     def test_assets_and_no_order_route(self):
         for path in ['/', '/style.css', '/app.js', '/api/state']:

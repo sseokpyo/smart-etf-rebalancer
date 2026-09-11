@@ -14,6 +14,9 @@ from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from urllib.parse import urlsplit
 
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import Timeout as RequestsTimeout
+
 from .config import Settings, load_env, save_connection_settings
 from .preferences import (ROOT, auto_trading_enabled, budget, portfolio_history,
                           save_auto_trading, save_budget, save_portfolio_value)
@@ -54,6 +57,23 @@ def connection_state():
     if not os.getenv('TOSS_CLIENT_ID') or not os.getenv('TOSS_CLIENT_SECRET'):
         return 'not_configured'
     return 'connected' if SNAPSHOT and SNAPSHOT.get('source') == 'live' else 'ready'
+
+
+def refresh_error_message(error: Exception) -> tuple[str, str]:
+    """Return an actionable, credential-safe broker refresh error."""
+    if isinstance(error, RequestsConnectionError):
+        return (
+            'network',
+            '토스 API 서버에 연결하지 못했습니다. 네트워크·방화벽·VPN·보안 프로그램에서 '
+            'openapi.tossinvest.com의 HTTPS(443) 접속을 허용한 뒤 다시 시도하세요.',
+        )
+    if isinstance(error, RequestsTimeout):
+        return 'timeout', '토스 API 응답 시간이 초과됐습니다. 잠시 후 다시 시도하세요.'
+    return (
+        'broker',
+        '잔고 조회에 실패했습니다. 토스 API 키·계좌 설정과 허용 IP를 확인하세요. '
+        '마지막 조회값은 유지됩니다.',
+    )
 
 
 def fetch_snapshot():
@@ -184,8 +204,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(200, {'snapshot': SNAPSHOT, 'connection': connection_state(), 'history': history})
             except Exception as error:
                 # Never send tokens, account IDs or raw broker error bodies to the browser.
-                LOGGER.error('portfolio refresh failed error_type=%s', type(error).__name__)
-                return self.respond(502, {'error': '잔고 조회에 실패했습니다. .env의 토스 API 키·계좌 설정, 허용 IP와 네트워크를 확인하세요. 마지막 조회값은 유지됩니다.'})
+                category, message = refresh_error_message(error)
+                LOGGER.error('portfolio refresh failed category=%s error_type=%s', category, type(error).__name__)
+                return self.respond(502, {'error': message})
         return self.respond(404, {'error': 'Not found'})
 
 
