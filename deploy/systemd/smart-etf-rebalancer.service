@@ -1,0 +1,21 @@
+[Unit]
+Description=Smart ETF Rebalancer monthly execution
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=smart-etf
+Group=smart-etf
+WorkingDirectory=/opt/smart-etf-rebalancer
+EnvironmentFile=/etc/smart-etf-rebalancer/environment
+Environment=APP_DIR=/opt/smart-etf-rebalancer
+Environment=VENV_PYTHON=/opt/smart-etf-rebalancer/.venv/bin/python
+Environment=RUN_MODE=dry-run
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/smart-etf-rebalancer/data
+ExecStart=/bin/bash /opt/smart-etf-rebalancer/scripts/run-scheduled.sh
