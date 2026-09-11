@@ -26,7 +26,7 @@ CLIENT_STARTED = None
 
 def current_budget():
     load_env()
-    return budget(os.getenv('MONTHLY_BUDGET_KRW', '100000'))
+    return budget(os.getenv('MONTHLY_BUDGET_KRW', '500000'))
 
 
 def connection_state():

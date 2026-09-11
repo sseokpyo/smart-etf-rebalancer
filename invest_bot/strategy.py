@@ -37,6 +37,14 @@ class Signal:
     targets: Mapping[str, Decimal]
 
 
+@dataclass(frozen=True)
+class RebalancePlan:
+    """Dollar-value orders; sell quantities are resolved from live holdings later."""
+    buys: Mapping[str, Decimal]
+    sells: Mapping[str, Decimal]
+    sell_rebalance_required: bool
+
+
 def sma(closes: Sequence[Decimal], period: int) -> Decimal:
     if len(closes) < period:
         raise ValueError(f"Need {period} daily closes; received {len(closes)}.")
@@ -85,6 +93,12 @@ def apply_tqqq_recovery(targets: Mapping[str, Decimal], drawdown: Decimal, recov
 
 
 def calculate_signal(qqq_closes: Sequence[Decimal], tqqq_closes: Sequence[Decimal], lookback: int) -> Signal:
+    if len(qqq_closes) < 2 or len(tqqq_closes) < 2:
+        raise ValueError("Need at least two daily closes for price validation.")
+    for symbol, closes in (("QQQ", qqq_closes), ("TQQQ", tqqq_closes)):
+        move = abs(closes[-1] / closes[-2] - ONE)
+        if move > Decimal(".20"):
+            raise ValueError(f"{symbol} daily price movement exceeds the 20% safety limit.")
     state = classify(qqq_closes)
     close, avg50, avg175 = qqq_closes[-1], sma(qqq_closes, 50), sma(qqq_closes, 175)
     dd = tqqq_drawdown(tqqq_closes, lookback)
@@ -112,3 +126,33 @@ def allocate_new_cash(current_values: Mapping[str, Decimal], targets: Mapping[st
                 break
     # Dollars are accepted as decimal strings. Preserve 2 decimals and avoid dust orders.
     return {s: amount.quantize(Decimal(".01"), rounding=ROUND_DOWN) if amount >= minimum else ZERO for s, amount in allocations.items()}
+
+
+def rebalance_with_new_cash(
+    current_values: Mapping[str, Decimal],
+    targets: Mapping[str, Decimal],
+    cash: Decimal,
+    minimum: Decimal,
+    threshold: Decimal,
+) -> RebalancePlan:
+    """Use cash first, selling only when the remaining drift is at least threshold."""
+    if not ZERO < threshold < ONE:
+        raise ValueError("Rebalance threshold must be between zero and one.")
+    buys = allocate_new_cash(current_values, targets, cash, minimum)
+    total = sum((current_values.get(symbol, ZERO) for symbol in SYMBOLS), ZERO)
+    if total <= ZERO:
+        return RebalancePlan(buys, {symbol: ZERO for symbol in SYMBOLS}, False)
+    projected_total = total + cash
+    projected = {symbol: current_values.get(symbol, ZERO) + buys[symbol] for symbol in SYMBOLS}
+    drift = max(abs(projected[symbol] / projected_total - targets[symbol]) for symbol in SYMBOLS)
+    if drift < threshold:
+        return RebalancePlan(buys, {symbol: ZERO for symbol in SYMBOLS}, False)
+
+    # Selling does not change total portfolio value. Set each overweight holding to
+    # its target value after the monthly contribution, then buy every underweight.
+    desired = {symbol: targets[symbol] * projected_total for symbol in SYMBOLS}
+    sells = {symbol: max(ZERO, current_values.get(symbol, ZERO) - desired[symbol]) for symbol in SYMBOLS}
+    rebalance_buys = {symbol: max(ZERO, desired[symbol] - current_values.get(symbol, ZERO)) for symbol in SYMBOLS}
+    quantized_sells = {symbol: value.quantize(Decimal(".01"), rounding=ROUND_DOWN) if value >= minimum else ZERO for symbol, value in sells.items()}
+    quantized_buys = {symbol: value.quantize(Decimal(".01"), rounding=ROUND_DOWN) if value >= minimum else ZERO for symbol, value in rebalance_buys.items()}
+    return RebalancePlan(quantized_buys, quantized_sells, True)

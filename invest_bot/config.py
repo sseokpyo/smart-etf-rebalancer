@@ -74,6 +74,7 @@ class Settings:
     cash_buffer_rate: Decimal
     min_order_usd: Decimal
     drawdown_lookback_days: int
+    rebalance_threshold: Decimal
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -83,8 +84,9 @@ class Settings:
             client_secret=required("TOSS_CLIENT_SECRET"),
             account_seq=os.getenv("TOSS_ACCOUNT_SEQ") or None,
             dry_run=os.getenv("DRY_RUN", "true").lower() == "true",
-            monthly_budget_krw=Decimal(budget(os.getenv("MONTHLY_BUDGET_KRW", "100000"))),
+            monthly_budget_krw=Decimal(budget(os.getenv("MONTHLY_BUDGET_KRW", "500000"))),
             cash_buffer_rate=Decimal(os.getenv("CASH_BUFFER_RATE", "0.02")),
             min_order_usd=Decimal(os.getenv("MIN_ORDER_USD", "1.00")),
             drawdown_lookback_days=int(os.getenv("DRAWDOWN_LOOKBACK_DAYS", "252")),
+            rebalance_threshold=Decimal(os.getenv("REBALANCE_THRESHOLD", "0.05")),
         )

@@ -7,7 +7,7 @@ from invest_bot.config import Settings
 
 
 def settings():
-    return Settings('id', 'secret', None, True, Decimal('100000'), Decimal('.02'), Decimal('1'), 252)
+    return Settings('id', 'secret', None, True, Decimal('500000'), Decimal('.02'), Decimal('1'), 252, Decimal('.05'))
 
 
 class AutoRunTests(unittest.TestCase):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
@@ -7,6 +8,12 @@ import requests
 
 
 BASE_URL = "https://openapi.tossinvest.com"
+
+
+@dataclass(frozen=True)
+class Holding:
+    value_usd: Decimal
+    quantity: Decimal
 
 
 class TossClient:
@@ -71,9 +78,15 @@ class TossClient:
         return [Decimal(candle["closePrice"]) for candle in ordered]
 
     def holdings_usd(self) -> dict[str, Decimal]:
+        return {symbol: holding.value_usd for symbol, holding in self.holdings().items()}
+
+    def holdings(self) -> dict[str, Holding]:
         result = self._request("GET", "/api/v1/holdings", account=True)
-        values = {item["symbol"]: Decimal(item["marketValue"]["amount"]) for item in result["items"] if item["marketCountry"] == "US"}
-        return values
+        return {
+            item["symbol"]: Holding(Decimal(item["marketValue"]["amount"]), Decimal(str(item["quantity"])))
+            for item in result["items"]
+            if item["marketCountry"] == "US" and Decimal(str(item["quantity"])) > 0
+        }
 
     def usd_per_krw(self) -> Decimal:
         result = self._request("GET", "/api/v1/exchange-rate", params={"baseCurrency": "USD", "quoteCurrency": "KRW"})
@@ -85,6 +98,16 @@ class TossClient:
 
     def buy_amount(self, symbol: str, amount_usd: Decimal, client_order_id: str) -> dict[str, Any]:
         payload = {"symbol": symbol, "side": "BUY", "orderType": "MARKET", "orderAmount": str(amount_usd), "clientOrderId": client_order_id}
+        return self._request("POST", "/api/v1/orders", account=True, json=payload)
+
+    def sellable_quantity(self, symbol: str) -> Decimal:
+        result = self._request("GET", "/api/v1/sellable-quantity", account=True, params={"symbol": symbol})
+        return Decimal(str(result["sellableQuantity"]))
+
+    def sell_quantity(self, symbol: str, quantity: Decimal, client_order_id: str) -> dict[str, Any]:
+        if quantity <= 0:
+            raise ValueError("Sell quantity must be positive.")
+        payload = {"symbol": symbol, "side": "SELL", "orderType": "MARKET", "quantity": str(quantity), "clientOrderId": client_order_id}
         return self._request("POST", "/api/v1/orders", account=True, json=payload)
 
 

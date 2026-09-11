@@ -46,7 +46,7 @@ def validate_budget(value):
     return int(amount)
 
 
-def budget(default='100000'):
+def budget(default='500000'):
     settings = _read_settings()
     if 'monthly_budget_krw' in settings:
         return validate_budget(settings['monthly_budget_krw'])
