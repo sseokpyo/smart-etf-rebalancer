@@ -9,6 +9,7 @@ from urllib.error import HTTPError
 from http.server import HTTPServer
 
 from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import SSLError as RequestsSSLError
 
 from invest_bot import config, dashboard, preferences
 from invest_bot.config import Settings
@@ -73,6 +74,14 @@ class DashboardTests(unittest.TestCase):
             body = error.exception.read().decode()
         self.assertIn('openapi.tossinvest.com', body)
         self.assertNotIn('private detail', body)
+
+    def test_refresh_reports_tls_certificate_failure(self):
+        with patch.object(dashboard, 'fetch_snapshot', side_effect=RequestsSSLError('private certificate detail')):
+            with self.assertRaises(HTTPError) as error:
+                self.post('/api/refresh', {})
+            body = error.exception.read().decode()
+        self.assertIn('보안 인증서', body)
+        self.assertNotIn('private certificate detail', body)
 
     def test_assets_and_no_order_route(self):
         for path in ['/', '/style.css', '/app.js', '/api/state']:

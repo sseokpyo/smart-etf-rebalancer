@@ -15,6 +15,7 @@ from logging.handlers import RotatingFileHandler
 from urllib.parse import urlsplit
 
 from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import SSLError as RequestsSSLError
 from requests.exceptions import Timeout as RequestsTimeout
 
 from .config import Settings, load_env, save_connection_settings
@@ -61,6 +62,12 @@ def connection_state():
 
 def refresh_error_message(error: Exception) -> tuple[str, str]:
     """Return an actionable, credential-safe broker refresh error."""
+    if isinstance(error, RequestsSSLError):
+        return (
+            'tls',
+            '토스 API의 보안 인증서를 확인하지 못했습니다. Windows 날짜·시간을 자동으로 맞추고, '
+            'VPN·회사 프록시·보안 프로그램의 HTTPS 검사에서 openapi.tossinvest.com을 허용한 뒤 다시 시도하세요.',
+        )
     if isinstance(error, RequestsConnectionError):
         return (
             'network',
