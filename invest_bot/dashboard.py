@@ -23,6 +23,14 @@ def current_budget():
     return budget(os.getenv('MONTHLY_BUDGET_KRW', '100000'))
 
 
+def connection_state():
+    """Return readiness only; credentials and account identifiers stay server-side."""
+    load_env()
+    if not os.getenv('TOSS_CLIENT_ID') or not os.getenv('TOSS_CLIENT_SECRET'):
+        return 'not_configured'
+    return 'connected' if SNAPSHOT and SNAPSHOT.get('source') == 'live' else 'ready'
+
+
 def fetch_snapshot():
     global CLIENT, CLIENT_STARTED
     from .toss import TossClient
@@ -76,7 +84,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/state':
             try:
-                return self.respond(200, {'budget': current_budget(), 'token': TOKEN, 'snapshot': SNAPSHOT})
+                return self.respond(200, {'budget': current_budget(), 'token': TOKEN, 'snapshot': SNAPSHOT, 'connection': connection_state()})
             except (ValueError, KeyError, OSError):
                 return self.respond(500, {'error': '투자금 설정 파일을 확인하세요: data/settings.json'})
         assets = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'application/javascript'), '/style.css': ('style.css', 'text/css')}
@@ -104,7 +112,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/refresh':
             try:
                 SNAPSHOT = fetch_snapshot()
-                return self.respond(200, {'snapshot': SNAPSHOT})
+                return self.respond(200, {'snapshot': SNAPSHOT, 'connection': connection_state()})
             except Exception:
                 # Never send tokens, account IDs or raw broker error bodies to the browser.
                 return self.respond(502, {'error': '잔고 조회에 실패했습니다. .env의 토스 API 키·계좌 설정, 허용 IP와 네트워크를 확인하세요. 마지막 조회값은 유지됩니다.'})
