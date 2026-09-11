@@ -85,6 +85,10 @@ python -m invest_bot run --live
 
 PC를 켜 두지 않고 월별 계획을 실행하려면 고정 공인 IP가 있는 Linux 서버가 필요합니다. 서버 설치, systemd 타이머, 점검 및 실주문 전환 절차는 [서버 자동 실행 배포 안내](docs/server-deployment.md)에 정리했습니다. 기본 타이머는 `DRY_RUN`으로만 동작합니다.
 
+## Windows PC 자동 실행
+
+서버 대신 현재 PC에서 월간 계획을 자동 생성하려면 [Windows 작업 스케줄러 안내](docs/windows-scheduled-task.md)를 사용하세요. PC가 켜져 있거나 절전 상태에서 깨울 수 있어야 하며, 기본 등록 작업은 `DRY_RUN`만 수행합니다.
+
 ## 구현한 전략 해석
 
 - 매월 예산: 100,000원. 실제 주문금액은 토스 참고 USD/KRW 환율로 환산하고 2% 현금 버퍼를 뺍니다.
